@@ -1,14 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
 using System.IO;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace hikvisiondecrypter
@@ -70,12 +65,20 @@ namespace hikvisiondecrypter
 
             }
 
-            string username = upasslist[positions[0]];
-            string password = upasslist[positions[1]];
+            try
+            {
+                string username = upasslist[positions[0]];
+                string password = upasslist[positions[1]];
 
-            label2.Text = string.Format("USERNAME: {0}", username);
-            label3.Text = string.Format("PASSWORD: {0}", password);
-
+                label2.Text = string.Format("USERNAME: {0}", username);
+                label3.Text = string.Format("PASSWORD: {0}", password);
+            }
+            catch
+            {
+                label2.Text = string.Format("AUTOMATIC PASSWORD GET FAILED");
+                label3.Text = string.Format("USE MANUAL METHOD");
+            }
+            
             if (checkBox1.Checked)
             {
                 Regex rgx = new Regex("[^a-zA-Z0-9 -]");
