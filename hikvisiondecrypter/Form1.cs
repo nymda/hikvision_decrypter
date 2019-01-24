@@ -20,10 +20,8 @@ namespace hikvisiondecrypter
             InitializeComponent();
         }
 
-        private void Form_DragEnter(object sender, DragEventArgs e)
+        public void doDecrypt(string[] FileList)
         {
-            string[] FileList = (string[])e.Data.GetData(DataFormats.FileDrop, false);
-
             byte[] key = { 0x73, 0x8B, 0x55, 0x44 };
             byte[] fileContents = File.ReadAllBytes(FileList[0]);
             byte[] xorOutput = new byte[fileContents.Length];
@@ -39,6 +37,44 @@ namespace hikvisiondecrypter
 
             string output = Encoding.UTF8.GetString(xorOutput);
             string outputrg;
+
+            string upass = "";
+
+            for (int o = 0; o < 100; o++)
+            {
+                upass = upass + output[634525 + o];
+            }
+
+            Regex rgx2 = new Regex("[^a-zA-Z0-9 -]");
+            upass = rgx2.Replace(upass, " ");
+
+            List<Char> charlist = new List<Char> { };
+
+            string[] upassarray = upass.Split(' ');
+
+            List<String> upasslist = new List<string>(upassarray);
+
+            List<int> positions = new List<int> { };
+
+            for (int g = 0; g < upasslist.Count; g++)
+            {
+                if (upasslist[g].Length <= 3)
+                {
+                    upasslist.RemoveAt(g);
+                }
+                else
+                {
+                    positions.Add(g);
+                    Console.WriteLine(upasslist[g]);
+                }
+
+            }
+
+            string username = upasslist[positions[0]];
+            string password = upasslist[positions[1]];
+
+            label2.Text = string.Format("USERNAME: {0}", username);
+            label3.Text = string.Format("PASSWORD: {0}", password);
 
             if (checkBox1.Checked)
             {
@@ -61,6 +97,20 @@ namespace hikvisiondecrypter
                     File.WriteAllText(dlg.FileName, outputrg);
                 }
             }
+        }
+
+        private void Form_DragEnter(object sender, DragEventArgs e)
+        {
+            string[] FileList = (string[])e.Data.GetData(DataFormats.FileDrop, false);
+            try
+            {
+                doDecrypt(FileList);
+            }
+            catch
+            {
+
+            }
+
         }
 
         public static byte[] Decrypt(byte[] cipherText)
@@ -93,6 +143,32 @@ namespace hikvisiondecrypter
                 raw[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);
             }
             return raw;
+        }
+
+        private void Form1_Load(object sender, EventArgs e)
+        {
+
+        }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            using (OpenFileDialog dlg = new OpenFileDialog())
+            {
+                dlg.Title = "Open Config File";
+
+                if (dlg.ShowDialog() == DialogResult.OK)
+                {
+                    string[] file = new string[] { dlg.FileName };
+                    try
+                    {
+                        doDecrypt(file);
+                    }
+                    catch
+                    {
+
+                    }
+                }
+            }
         }
     }
 }
